@@ -1,0 +1,33 @@
+// AI Studio コンポーネント - 初心者向けAI発注支援ツール
+
+// メインコンポーネント
+export { AladdinChat } from './AladdinChat'
+export { CostEstimator } from './CostEstimator'
+export { SpecPreview } from './SpecPreview'
+export { VendorRecommendation } from './VendorRecommendation'
+export { ProgressIndicator } from './ProgressIndicator'
+export { GlossaryPanel } from './GlossaryPanel'
+export { SimilarCasesPanel } from './SimilarCasesPanel'
+export { HelpPanel } from './HelpPanel'
+export { ArtifactPanel } from './ArtifactPanel'
+export { WelcomeScreen } from './WelcomeScreen'
+export { EnhancedChat } from './EnhancedChat'
+export { SyntaxHighlighter } from './SyntaxHighlighter'
+
+// レガシーコンポーネント（互換性のため）
+export { FileExplorer } from './FileExplorer'
+export { ChatPanel } from './ChatPanel'
+export { TerminalPanel } from './TerminalPanel'
+export { TaskPanel } from './TaskPanel'
+export { CodeViewer } from './CodeViewer'
+export { ActivityBar, type ActivityView } from './ActivityBar'
+export { SearchPanel } from './SearchPanel'
+export { GitPanel } from './GitPanel'
+export { AgentPanel } from './AgentPanel'
+export { CommandPalette } from './CommandPalette'
+export { EditorTabs } from './EditorTabs'
+export { Breadcrumb } from './Breadcrumb'
+export { DebugPanel } from './DebugPanel'
+export { ProblemsPanel } from './ProblemsPanel'
+export { Minimap } from './Minimap'
+export { BottomPanel } from './BottomPanel'
