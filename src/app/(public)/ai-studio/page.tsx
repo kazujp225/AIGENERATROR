@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import {
   Panel,
   PanelGroup,
@@ -28,6 +28,9 @@ import {
   Printer,
   Link2,
   Check,
+  Briefcase,
+  ExternalLink,
+  RefreshCw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -36,11 +39,15 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
 import { mockVendors } from '@/mocks/vendors'
-import { mockGlossary } from '@/mocks/ai-studio'
+import { mockGlossary, mockSimilarCases } from '@/mocks/ai-studio'
 import {
   calculateCostEstimate,
   matchVendors,
   generateSpecification,
+  matchSimilarCases,
+  saveSession,
+  loadSession,
+  clearSession,
   INDUSTRY_USE_CASES,
   type AladdinAnswers,
   type IndustryType,
@@ -48,6 +55,7 @@ import {
   type CostEstimateResult,
   type VendorMatchResult,
   type GeneratedSpec,
+  type SimilarCaseMatch,
 } from '@/lib/aladdin-engine'
 import {
   downloadMarkdown,
@@ -223,6 +231,24 @@ export default function AIStudioPage() {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [showSessionRecovery, setShowSessionRecovery] = useState(false)
+  const [savedSession, setSavedSession] = useState<{ answers: AladdinAnswers; currentStep: number } | null>(null)
+
+  // セッション復元チェック
+  useEffect(() => {
+    const session = loadSession()
+    if (session && Object.keys(session.answers).length > 0) {
+      setSavedSession({ answers: session.answers, currentStep: session.currentStep })
+      setShowSessionRecovery(true)
+    }
+  }, [])
+
+  // 回答変更時にセッション保存
+  useEffect(() => {
+    if (Object.keys(answers).length > 0) {
+      saveSession(answers, currentStep)
+    }
+  }, [answers, currentStep])
 
   // 現在の質問を取得（条件分岐対応）
   const visibleQuestions = useMemo(() => {
@@ -262,6 +288,29 @@ export default function AIStudioPage() {
     return null
   }, [answers])
 
+  const similarCases = useMemo<SimilarCaseMatch[]>(() => {
+    if (Object.keys(answers).length >= 2) {
+      return matchSimilarCases(answers, mockSimilarCases)
+    }
+    return []
+  }, [answers])
+
+  // セッション復元
+  const handleRestoreSession = () => {
+    if (savedSession) {
+      setAnswers(savedSession.answers)
+      setCurrentStep(savedSession.currentStep)
+      setShowSessionRecovery(false)
+    }
+  }
+
+  // セッション破棄
+  const handleDiscardSession = () => {
+    clearSession()
+    setShowSessionRecovery(false)
+    setSavedSession(null)
+  }
+
   // 回答処理
   const handleAnswer = useCallback((value: string | string[] | boolean) => {
     const questionId = currentQuestion?.id
@@ -296,6 +345,7 @@ export default function AIStudioPage() {
     setIsComplete(false)
     setShareUrl(null)
     setIsCopied(false)
+    clearSession()
   }
 
   // エクスポートデータ
@@ -814,6 +864,76 @@ export default function AIStudioPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Similar Cases Card */}
+            <Card className={cn(
+              'shadow-lg border-0 transition-all',
+              similarCases.length > 0 ? 'opacity-100' : 'opacity-50'
+            )}>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Briefcase className="h-5 w-5 text-purple-600" />
+                  類似事例
+                  {similarCases.length > 0 && (
+                    <Badge variant="outline" className="ml-auto">
+                      {similarCases.length}件
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {similarCases.length > 0 ? (
+                  <div className="space-y-3">
+                    {similarCases.map((match, idx) => (
+                      <div
+                        key={match.case.id}
+                        className={cn(
+                          'p-3 rounded-lg border transition-all hover:shadow-md cursor-pointer',
+                          idx === 0 ? 'border-purple-200 bg-purple-50/50' : 'border-gray-100'
+                        )}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-sm line-clamp-1">{match.case.title}</h4>
+                            <p className="text-xs text-gray-500 line-clamp-2 mt-1">
+                              {match.case.description}
+                            </p>
+                          </div>
+                          <Badge className={cn(
+                            'text-xs ml-2 shrink-0',
+                            idx === 0 ? 'bg-purple-600' : 'bg-gray-600'
+                          )}>
+                            {match.matchScore}%
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <span>{match.case.industry}</span>
+                          <span>{(match.case.cost / 10000).toLocaleString()}万円</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {match.case.technologies.slice(0, 3).map(tech => (
+                            <Badge key={tech} variant="secondary" className="text-xs">
+                              {tech}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <Button variant="outline" className="w-full" asChild>
+                      <Link href="/cases">
+                        すべての事例を見る
+                        <ExternalLink className="h-4 w-4 ml-1" />
+                      </Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-gray-400">
+                    <Briefcase className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">質問に答えると類似事例が表示されます</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </main>
@@ -852,6 +972,47 @@ export default function AIStudioPage() {
                 </div>
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Session Recovery Dialog */}
+      <Dialog open={showSessionRecovery} onOpenChange={setShowSessionRecovery}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-blue-600" />
+              前回の続きから始めますか？
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              前回入力した内容が保存されています。続きから始めることができます。
+            </p>
+            {savedSession && Object.keys(savedSession.answers).length > 0 && (
+              <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                <p className="text-gray-500 mb-2">保存されている回答:</p>
+                <ul className="space-y-1 text-gray-700">
+                  {savedSession.answers.industry && (
+                    <li>• 業界: {savedSession.answers.industry}</li>
+                  )}
+                  {savedSession.answers.useCase && (
+                    <li>• ユースケース: {savedSession.answers.useCase}</li>
+                  )}
+                  {savedSession.answers.budget && (
+                    <li>• 予算: {savedSession.answers.budget}</li>
+                  )}
+                </ul>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={handleDiscardSession} className="flex-1">
+                最初から始める
+              </Button>
+              <Button onClick={handleRestoreSession} className="flex-1 bg-blue-600 hover:bg-blue-700">
+                続きから始める
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

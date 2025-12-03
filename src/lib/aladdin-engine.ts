@@ -688,3 +688,180 @@ export const INDUSTRY_USE_CASES: Record<IndustryType, { value: UseCaseType; labe
     { value: 'other', label: 'その他', icon: '💡' },
   ],
 }
+
+// ========================================
+// 類似事例マッチングエンジン
+// ========================================
+
+export type SimilarCaseData = {
+  id: string
+  title: string
+  industry: string
+  description: string
+  cost: number
+  duration: string
+  technologies: string[]
+  thumbnail?: string
+}
+
+export type SimilarCaseMatch = {
+  case: SimilarCaseData
+  matchScore: number
+  matchReasons: string[]
+}
+
+const INDUSTRY_MAP: Record<IndustryType, string[]> = {
+  manufacturing: ['製造業', '製造', 'メーカー'],
+  retail: ['小売業', '小売', 'EC', 'Eコマース', '通販'],
+  finance: ['金融', '保険', '銀行', '証券', 'フィンテック'],
+  healthcare: ['医療', 'ヘルスケア', '病院', '介護', '健康'],
+  logistics: ['物流', '運輸', '配送', '倉庫', 'ロジスティクス'],
+  service: ['サービス業', 'サービス', 'BtoB', 'BtoC'],
+  other: ['その他']
+}
+
+const USE_CASE_KEYWORDS: Record<UseCaseType, string[]> = {
+  quality_inspection: ['検査', '外観', '品質', '画像認識', '不良品'],
+  demand_forecast: ['予測', '需要', '売上', '販売予測', '在庫'],
+  equipment_maintenance: ['保全', '設備', '予知', 'メンテナンス', '故障'],
+  production_optimization: ['生産', '最適化', '工程', '効率化'],
+  inventory_optimization: ['在庫', '最適化', '発注'],
+  customer_support: ['チャット', 'ボット', '顧客対応', 'カスタマー', 'FAQ'],
+  document_processing: ['文書', 'OCR', '書類', 'ペーパーレス', 'デジタル化'],
+  fraud_detection: ['不正', '検知', 'セキュリティ', '詐欺'],
+  risk_analysis: ['リスク', '分析', '与信', '審査'],
+  personalization: ['レコメンド', 'パーソナライズ', '推薦', 'おすすめ'],
+  diagnosis_support: ['診断', '医療', '画像診断', 'AI診断'],
+  route_optimization: ['ルート', '配車', '配送', '最適化'],
+  data_analysis: ['分析', '可視化', 'BI', 'ダッシュボード'],
+  other: []
+}
+
+export function matchSimilarCases(
+  answers: AladdinAnswers,
+  cases: SimilarCaseData[],
+  limit: number = 3
+): SimilarCaseMatch[] {
+  const results: SimilarCaseMatch[] = []
+
+  for (const caseData of cases) {
+    let matchScore = 0
+    const matchReasons: string[] = []
+
+    // 業界マッチング (40点)
+    if (answers.industry) {
+      const industryKeywords = INDUSTRY_MAP[answers.industry]
+      if (industryKeywords.some(kw => caseData.industry.includes(kw))) {
+        matchScore += 40
+        matchReasons.push(`同業界（${caseData.industry}）`)
+      } else {
+        matchScore += 10
+      }
+    }
+
+    // ユースケースマッチング (40点)
+    if (answers.useCase) {
+      const keywords = USE_CASE_KEYWORDS[answers.useCase]
+      const descMatch = keywords.filter(kw =>
+        caseData.description.includes(kw) ||
+        caseData.title.includes(kw) ||
+        caseData.technologies.some(t => t.includes(kw))
+      )
+
+      if (descMatch.length >= 2) {
+        matchScore += 40
+        matchReasons.push('類似のユースケース')
+      } else if (descMatch.length >= 1) {
+        matchScore += 25
+        matchReasons.push('関連するユースケース')
+      } else {
+        matchScore += 5
+      }
+    }
+
+    // 予算規模マッチング (20点)
+    const costEstimate = calculateCostEstimate(answers)
+    const caseCost = caseData.cost
+    const ratio = caseCost / costEstimate.median
+
+    if (ratio >= 0.5 && ratio <= 1.5) {
+      matchScore += 20
+      matchReasons.push('予算規模が近い')
+    } else if (ratio >= 0.3 && ratio <= 2) {
+      matchScore += 10
+    }
+
+    results.push({
+      case: caseData,
+      matchScore: Math.min(100, matchScore),
+      matchReasons
+    })
+  }
+
+  return results
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, limit)
+}
+
+// ========================================
+// セッション永続化
+// ========================================
+
+const SESSION_STORAGE_KEY = 'aiaio_ai_studio_session'
+
+export type SessionData = {
+  answers: AladdinAnswers
+  currentStep: number
+  savedAt: string
+}
+
+export function saveSession(answers: AladdinAnswers, currentStep: number): void {
+  if (typeof window === 'undefined') return
+
+  const session: SessionData = {
+    answers,
+    currentStep,
+    savedAt: new Date().toISOString()
+  }
+
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+  } catch {
+    // localStorage might be full or disabled
+  }
+}
+
+export function loadSession(): SessionData | null {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const data = localStorage.getItem(SESSION_STORAGE_KEY)
+    if (!data) return null
+
+    const session: SessionData = JSON.parse(data)
+
+    // 24時間以上経過したセッションは無効
+    const savedAt = new Date(session.savedAt)
+    const now = new Date()
+    const hoursDiff = (now.getTime() - savedAt.getTime()) / (1000 * 60 * 60)
+
+    if (hoursDiff > 24) {
+      clearSession()
+      return null
+    }
+
+    return session
+  } catch {
+    return null
+  }
+}
+
+export function clearSession(): void {
+  if (typeof window === 'undefined') return
+
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
