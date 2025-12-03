@@ -23,6 +23,11 @@ import {
   Clock,
   Star,
   AlertCircle,
+  Copy,
+  FileDown,
+  Printer,
+  Link2,
+  Check,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -44,6 +49,13 @@ import {
   type VendorMatchResult,
   type GeneratedSpec,
 } from '@/lib/aladdin-engine'
+import {
+  downloadMarkdown,
+  downloadJSON,
+  printAsPDF,
+  copyToClipboard,
+  generateShareableURL,
+} from '@/lib/export-utils'
 import type { GlossaryTerm } from '@/types/ai-studio'
 import {
   Dialog,
@@ -208,6 +220,9 @@ export default function AIStudioPage() {
   const [isComplete, setIsComplete] = useState(false)
   const [isGlossaryOpen, setIsGlossaryOpen] = useState(false)
   const [selectedGlossaryTerm, setSelectedGlossaryTerm] = useState<GlossaryTerm | null>(null)
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false)
+  const [isCopied, setIsCopied] = useState(false)
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
 
   // 現在の質問を取得（条件分岐対応）
   const visibleQuestions = useMemo(() => {
@@ -279,6 +294,51 @@ export default function AIStudioPage() {
     setCurrentStep(0)
     setAnswers({})
     setIsComplete(false)
+    setShareUrl(null)
+    setIsCopied(false)
+  }
+
+  // エクスポートデータ
+  const exportData = useMemo(() => ({
+    answers,
+    costEstimate,
+    vendorMatches,
+    specification,
+    exportedAt: new Date(),
+  }), [answers, costEstimate, vendorMatches, specification])
+
+  // エクスポート: Markdown
+  const handleExportMarkdown = () => {
+    downloadMarkdown(exportData)
+    setIsExportMenuOpen(false)
+  }
+
+  // エクスポート: JSON
+  const handleExportJSON = () => {
+    downloadJSON(exportData)
+    setIsExportMenuOpen(false)
+  }
+
+  // エクスポート: PDF（印刷）
+  const handlePrint = () => {
+    printAsPDF(exportData)
+    setIsExportMenuOpen(false)
+  }
+
+  // コピー
+  const handleCopy = async () => {
+    const success = await copyToClipboard(exportData)
+    if (success) {
+      setIsCopied(true)
+      setTimeout(() => setIsCopied(false), 2000)
+    }
+  }
+
+  // 共有URL生成
+  const handleShare = () => {
+    const url = generateShareableURL(exportData)
+    setShareUrl(url)
+    navigator.clipboard.writeText(url)
   }
 
   return (
@@ -309,10 +369,58 @@ export default function AIStudioPage() {
               <span className="hidden sm:inline">最初から</span>
             </Button>
             {isComplete && (
-              <Button size="sm" className="h-8 gap-1 bg-blue-600 hover:bg-blue-700">
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">ダウンロード</span>
-              </Button>
+              <div className="relative">
+                <Button
+                  size="sm"
+                  className="h-8 gap-1 bg-blue-600 hover:bg-blue-700"
+                  onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">ダウンロード</span>
+                </Button>
+                {isExportMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border py-1 z-50">
+                    <button
+                      onClick={handleExportMarkdown}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <FileDown className="h-4 w-4 text-gray-500" />
+                      Markdown形式
+                    </button>
+                    <button
+                      onClick={handleExportJSON}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <FileText className="h-4 w-4 text-gray-500" />
+                      JSON形式
+                    </button>
+                    <button
+                      onClick={handlePrint}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <Printer className="h-4 w-4 text-gray-500" />
+                      PDF印刷
+                    </button>
+                    <hr className="my-1" />
+                    <button
+                      onClick={handleCopy}
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      {isCopied ? (
+                        <>
+                          <Check className="h-4 w-4 text-green-500" />
+                          コピーしました！
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-4 w-4 text-gray-500" />
+                          クリップボードにコピー
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -444,16 +552,39 @@ export default function AIStudioPage() {
                     <p className="text-gray-600 mb-6">
                       右側に仕様書・見積もり・おすすめベンダーが表示されています
                     </p>
-                    <div className="flex gap-3 justify-center">
+                    <div className="flex gap-3 justify-center flex-wrap">
                       <Button variant="outline" onClick={handleReset}>
                         <RotateCcw className="h-4 w-4 mr-2" />
                         最初からやり直す
                       </Button>
-                      <Button className="bg-blue-600 hover:bg-blue-700">
+                      <Button onClick={handleShare} className="bg-blue-600 hover:bg-blue-700">
                         <Share2 className="h-4 w-4 mr-2" />
                         結果を共有
                       </Button>
                     </div>
+                    {shareUrl && (
+                      <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                        <div className="flex items-center gap-2 text-green-700 text-sm mb-2">
+                          <Check className="h-4 w-4" />
+                          共有URLをコピーしました！
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={shareUrl}
+                            readOnly
+                            className="flex-1 text-xs p-2 bg-white border rounded"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => navigator.clipboard.writeText(shareUrl)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -669,7 +800,7 @@ export default function AIStudioPage() {
                       ))}
                     </div>
                     {isComplete && (
-                      <Button variant="outline" className="w-full">
+                      <Button variant="outline" className="w-full" onClick={handleExportMarkdown}>
                         <FileText className="h-4 w-4 mr-2" />
                         仕様書をダウンロード
                       </Button>
